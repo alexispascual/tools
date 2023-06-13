@@ -107,90 +107,16 @@ def save_image(image,
     return cv2.imwrite(file_name, image)
 
 
-def scan_horizon_files(directory: str):
-
-    horizons = get_images_from_directory(directory)
-    horizons = [get_file_id(f) for f in horizons]
-
-    return horizons
-
-
-def fill_horizon_line(image):
-
-    copy_image = image.copy()
-    copy_image = cv2.flip(image, 0)
-
-    horizon_line = np.argmax(copy_image, axis=0)
-    
-    height = image.shape[0]
-    width = image.shape[1]
-
-    for col in range(width):
-        corrected_horizon = height - horizon_line[col][0]
-        image[corrected_horizon + 1:height, col] = (255, 255, 255)
-        image[0:corrected_horizon, col] = (0, 0, 0)
-
-    return image
-
-
-def fill_horizon_line_top_down(image):
-
-    horizon_line = np.argmax(image, axis=0)
-    
-    height = image.shape[0]
-    width = image.shape[1]
-
-    for col in range(width):
-        if horizon_line[col][0] == 0:
-            image[0:height, col] = (255, 255, 255)
-        else:
-            image[0:horizon_line[col][0], col] = (0, 0, 0)
-            image[horizon_line[col][0] + 1:height, col] = (255, 255, 255)
-
-    return image
-
-
-def generate_depth_map(point_cloud: np.ndarray, 
-                       normalize: bool = False):
-
-    depth_estimate = np.zeros((point_cloud.shape[0], point_cloud.shape[1]))
-    point_cloud = np.nan_to_num(point_cloud)
-
-    for w in range(point_cloud.shape[0]):
-        for h in range(point_cloud.shape[1]):
-            value = point_cloud[w][h]
-
-            if not np.isnan(value.any()):
-                depth_estimate[w][h] = math.sqrt(value[0] * value[0] 
-                                                 + value[1] * value[1]
-                                                 + value[2] * value[2])
-            else:
-                depth_estimate[w][h] = 0
-
-    if normalize:
-        normalized_depth = (depth_estimate - np.min(depth_estimate)) / (np.max(depth_estimate) - np.min(depth_estimate)) * 255
-
-        return normalized_depth.astype(np.uint8)
-
-    else:
-        return depth_estimate
-
-
 def atoi(text):
     return int(text) if text.isdigit() else text
 
 
-def natural_keys(text):
-    return [atoi(c) for c in re.split(r'(\d+)', text)]
+def natural_keys(text: Path):
+    return [atoi(c) for c in re.split(r'(\d+)', text.name)]
 
 
-def get_images_from_directory(filepath: str, shuffle: bool = False) -> List[Path]:
-    paths = []
-
-    for entry in os.scandir(filepath):
-        if (entry.path.endswith(".jpg") or entry.path.endswith(".jpeg")
-                or entry.path.endswith(".png")) and entry.is_file():
-            paths.append(entry.path)
+def get_images_from_directory(filepath: Path, shuffle: bool = False) -> List[Path]:
+    paths = list(filepath.glob('*.jpg')) + list(filepath.glob('*.jpeg')) + list(filepath.glob('*.png'))
 
     if shuffle:
         random.shuffle(paths)
@@ -200,12 +126,12 @@ def get_images_from_directory(filepath: str, shuffle: bool = False) -> List[Path
     return paths
 
 
-def get_labels_from_directory(filepath: str, shuffle: bool = False) -> List[Path]:
+def get_files_from_directory(filepath: Path, 
+                             pattern: List[str], 
+                             shuffle: bool = False) -> List[Path]:
     paths = []
-
-    for entry in os.scandir(filepath):
-        if entry.path.endswith(".xml") and entry.is_file():
-            paths.append(entry.path)
+    for p in pattern: 
+        paths += list(filepath.glob(p))
 
     if shuffle:
         random.shuffle(paths)
@@ -213,19 +139,7 @@ def get_labels_from_directory(filepath: str, shuffle: bool = False) -> List[Path
         paths.sort(key=natural_keys)
 
     return paths
-
-
-def get_csv_files_from_directory(filepath: str):
-
-    paths = []
-
-    for entry in os.scandir(filepath):
-        if entry.path.endswith(".csv") and entry.is_file():
-            paths.append(entry.path)
-
-    paths.sort(key=natural_keys)
-    return paths
-
+    
 
 def get_file_id(filepath: Path) -> str:
     if platform.system() == "Windows":
@@ -234,15 +148,6 @@ def get_file_id(filepath: Path) -> str:
         file_id = ''.join(re.split(r'(\d+)', str(filepath).split('/')[-1])[1:-1])
 
     return file_id
-
-
-def calculate_depth_error(gt_depth_map: np.ndarray, predicted_depth_map: np.ndarray) -> Tuple[np.ndarray, float]:
-
-    error_map = np.subtract(predicted_depth_map, gt_depth_map).astype(np.float64)
-    non_zero = np.count_nonzero(gt_depth_map)
-    error = np.sum(error_map**2) / non_zero
-
-    return error_map, error
 
 
 def save_values(coordinates: list, 
